@@ -25,7 +25,7 @@ void BDT_optimal_cut()
     double N_s_2, N_b_2;
     double S1, S2, S;
     std::vector<double> S1_list, S2_list, S_list, a_list, b_list;
-
+    Double_t sig_norm = 0.0014; //average normalization factor for the three signal samples
     for(int k=0; k<3; k++)
     {
 	    TFile *f = new TFile(file_name[k],"READ");
@@ -35,12 +35,10 @@ void BDT_optimal_cut()
 	    h_test_signal = (TH1F*)f->Get("dataset/Method_BDT/BDT/MVA_BDT_S");
 	    h_test_bkg = (TH1F*)f->Get("dataset/Method_BDT/BDT/MVA_BDT_B");
 
-	    //Histograms are normalized to 1 -> to be improved
-	    h_test_signal->Scale(1/(h_test_signal->Integral()));
-	    h_test_bkg->Scale(1/(h_test_bkg->Integral()));
+	    //Signal is normalized to "sig_norm" factor
+	    h_test_signal->Scale(sig_norm);
 	    //Make up on plots
 	    h_test_signal->GetXaxis()->SetRangeUser(-0.5,0.5);
-	    h_test_signal->GetYaxis()->SetRangeUser(0,0.11);
 	    h_test_signal->SetLineColor(kRed);
 
             //Loop on both cuts in [-0.5;0.5]
@@ -49,22 +47,23 @@ void BDT_optimal_cut()
 		a = -0.5 + i * 0.05;
 		for(int j=0; j<21; j++){
 		    b = -0.5 + j * 0.05;
+                    if(a<b) continue;
                     //computing areas in range [a;0.5] and [b;a]
 		    N_s_1 = TH1_integral(h_test_signal,a,0.5);
 		    N_b_1 = TH1_integral(h_test_bkg,a,0.5);
 		    N_s_2 = TH1_integral(h_test_signal,b,a);
-		    N_b_2 = TH1_integral(h_test_bkg,b,a);
-		    if ( (N_b_1)>0 && (N_b_2)>0 ) {
-			S1 = N_s_1 / sqrt(N_b_1);
-			S2 = N_s_2 / sqrt(N_b_2);
+                    N_b_2 = TH1_integral(h_test_bkg,b,a);
+	 	    if ( (N_b_1)>0 && (N_b_2)>0 ) {
+	                S1 = N_s_1 / sqrt(N_s_1 + N_b_1);
+			S2 = N_s_2 / sqrt(N_s_2 + N_b_2);
 			//S1 = sqrt( 2*( (N_s_1+N_b_1)*log(1+ (N_s_1/N_b_1)) - N_s_1 ) );
 			//S2 = sqrt( 2*( (N_s_2+N_b_2)*log(1+ (N_s_2/N_b_2)) - N_s_2 ) );
-			//Combined significance
-			S = sqrt(S1*S1 + S2*S2);
-			a_list.push_back(a);
-			b_list.push_back(b);
-			S_list.push_back(S);
-			dim++;
+		        //Combined significance
+		        S = sqrt(S1*S1 + S2*S2);
+		        a_list.push_back(a);
+		        b_list.push_back(b);
+		        S_list.push_back(S);
+	   	        dim++;
 		    }
 		}
 	    }
@@ -82,6 +81,11 @@ void BDT_optimal_cut()
 	    cout<<"S value: "<<S_max<<endl;
 	    float a_max = a_list.at(S_maxIndex);
 	    float b_max = b_list.at(S_maxIndex);
+
+            //Computing cut efficiency on signal
+            Double_t N_S_12 = TH1_integral(h_test_signal,b_max,0.5);
+            Double_t N_S_tot = TH1_integral(h_test_signal,-0.5,0.5);
+            cout<<"Signal events selected by BDT "<<N_S_12<<" over "<<N_S_tot<<" ratio: "<<N_S_12/N_S_tot<<endl;
 	    
             TLine l;
             l.DrawLine(a_max,-0.5,a_max,0.3);
@@ -91,8 +95,8 @@ void BDT_optimal_cut()
 	    c3->SaveAs("BDT_2Dmap_"+cat_name[k]+".png");
 
 	    TCanvas *c1 = new TCanvas("c1","c1",150,10,990,660);
-	    h_test_signal->Draw();
-	    h_test_bkg->Draw("same");
+	    h_test_bkg->Draw();
+	    h_test_signal->Draw("same");
 	    c1->Update();
             l.DrawLine(a_max,0,a_max,0.1);
             l.DrawLine(b_max,0,b_max,0.1);
@@ -102,7 +106,31 @@ void BDT_optimal_cut()
 	    leg->AddEntry(h_test_bkg,cat_name[k]+"_bkg","f");
 	    leg->Draw();
 	    c1->Update();
-            c1->SaveAs("BDT_"+cat_name[k]+".png");
+            c1->SaveAs("BDT_"+cat_name[k]+"normalizedSignal.png");
+
+            //Drawing BDT score from scratch without signal normalization
+	    TCanvas *c2 = new TCanvas("c2","c2",150,10,990,660);
+	    TFile *f2 = new TFile(file_name[k],"READ");
+	    TH1F *h_test_signal2;
+	    TH1F *h_test_bkg2;
+	    h_test_signal2 = (TH1F*)f2->Get("dataset/Method_BDT/BDT/MVA_BDT_S");
+	    h_test_bkg2 = (TH1F*)f2->Get("dataset/Method_BDT/BDT/MVA_BDT_B");
+	    h_test_signal2->GetXaxis()->SetRangeUser(-0.5,0.5);
+	    h_test_signal2->SetLineColor(kRed);
+	    h_test_signal2->Scale(1/h_test_signal2->GetEntries());
+	    h_test_bkg2->Scale(1/h_test_bkg2->GetEntries());
+	    h_test_bkg2->Draw();
+	    h_test_signal2->Draw("same");
+	    c2->Update();
+            l.DrawLine(a_max,0,a_max,0.1);
+            l.DrawLine(b_max,0,b_max,0.1);
+
+	    TLegend*leg2 = new TLegend(0.1,0.7,0.48,0.9);
+	    leg2->AddEntry(h_test_signal2,cat_name[k]+"_signal","f");
+	    leg2->AddEntry(h_test_bkg2,cat_name[k]+"_bkg","f");
+	    leg2->Draw();
+	    c2->Update();
+            c2->SaveAs("BDT_"+cat_name[k]+".png");
 
 	    S_list.clear();
 	    S1_list.clear();
